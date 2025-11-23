@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>恐龙快打 - 简化版</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #87CEEB;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            width: 800px;
+            height: 400px;
+            margin: 50px auto;
+            position: relative;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 100%);
+            border: 2px solid #333;
+            overflow: hidden;
+        }
+
+        #ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 50px;
+            background: #8B4513;
+            border-top: 3px solid #654321;
+        }
+
+        .player {
+            position: absolute;
+            width: 40px;
+            height: 60px;
+            bottom: 50px;
+            left: 100px;
+            background: #FF6B6B;
+            border-radius: 10px;
+            transition: all 0.1s;
+        }
+
+        .player::before {
+            content: '';
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: #FFE4B5;
+            border-radius: 50%;
+            top: -15px;
+            left: 5px;
+        }
+
+        .enemy {
+            position: absolute;
+            width: 35px;
+            height: 55px;
+            bottom: 50px;
+            background: #4ECDC4;
+            border-radius: 8px;
+        }
+
+        .enemy::before {
+            content: '';
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            background: #FF6347;
+            border-radius: 50%;
+            top: -12px;
+            left: 5px;
+        }
+
+        .attack-effect {
+            position: absolute;
+            width: 60px;
+            height: 20px;
+            background: rgba(255, 255, 0, 0.7);
+            border-radius: 50%;
+            display: none;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .jumping {
+            animation: jump 0.5s ease-in-out;
+        }
+
+        @keyframes jump {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-80px); }
+        }
+
+        .attacking {
+            animation: attack 0.3s ease-in-out;
+        }
+
+        @keyframes attack {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="ground"></div>
+        <div id="player" class="player"></div>
+        <div id="attackEffect" class="attack-effect"></div>
+        
+        <div id="ui">
+            <div>生命值: <span id="health">100</span></div>
+            <div>得分: <span id="score">0</span></div>
+            <div>关卡: <span id="level">1</span></div>
+        </div>
+        
+        <div id="instructions">
+            操作: A/D 移动 | W 跳跃 | J 攻击 | K 跳跃攻击
+        </div>
+        
+        <div id="gameOver">
+            <h2>游戏结束!</h2>
+            <p>最终得分: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">重新开始</button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏状态
+        let gameState = {
+            health: 100,
+            score: 0,
+            level: 1,
+            isGameOver: false,
+            player: {
+                x: 100,
+                y: 350,
+                isJumping: false,
+                isAttacking: false,
+                facing: 'right'
+            },
+            enemies: [],
+            keys: {}
+        };
+
+        // DOM 元素
+        const player = document.getElementById('player');
+        const attackEffect = document.getElementById('attackEffect');
+        const gameContainer = document.getElementById('gameContainer');
+
+        // 键盘事件
+        document.addEventListener('keydown', (e) => {
+            gameState.keys[e.key.toLowerCase()] = true;
+            
+            if (e.key.toLowerCase() === 'w' && !gameState.player.isJumping) {
+                jump();
+            }
+            
+            if (e.key.toLowerCase() === 'j') {
+                attack();
+            }
+            
+            if (e.key.toLowerCase() === 'k' && !gameState.player.isJumping) {
+                jumpAttack();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            gameState.keys[e.key.toLowerCase()] = false;
+        });
+
+        // 玩家移动
+        function updatePlayer() {
+            if (gameState.isGameOver) return;
+
+            const speed = 5;
+            
+            if (gameState.keys['a']) {
+                gameState.player.x = Math.max(0, gameState.player.x - speed);
+                gameState.player.facing = 'left';
+                player.style.transform = 'scaleX(-1)';
+            }
+            
+            if (gameState.keys['d']) {
+                gameState.player.x = Math.min(760, gameState.player.x + speed);
+                gameState.player.facing = 'right';
+                player.style.transform = 'scaleX(1)';
+            }
+            
+            player.style.left = gameState.player.x + 'px';
+        }
+
+        // 跳跃功能
+        function jump() {
+            if (gameState.player.isJumping) return;
+            
+            gameState.player.isJumping = true;
+            player.classList.add('jumping');
+            
+            setTimeout(() => {
+                player.classList.remove('jumping');
+                gameState.player.isJumping = false;
+            }, 500);
+        }
+
+        // 攻击功能
+        function attack() {
+            if (gameState.player.isAttacking) return;
+            
+            gameState.player.isAttacking = true;
+            player.classList.add('attacking');
+            
+            // 显示攻击效果
+            const effectX = gameState.player.facing === 'right' ? 
+                gameState.player.x + 40 : gameState.player.x - 60;
+            
+            attackEffect.style.left = effectX + 'px';
+            attackEffect.style.bottom = '70px';
+            attackEffect.style.display = 'block';
+            
+            // 检查攻击命中
+            checkAttackHit(effectX);
+            
+            setTimeout(() => {
+                player.classList.remove('attacking');
+                attackEffect.style.display = 'none';
+                gameState.player.isAttacking = false;
+            }, 300);
+        }
+
+        // 跳跃攻击
+        function jumpAttack() {
+            jump();
+            setTimeout(() => attack(), 200);
+        }
+
+        // 检查攻击命中
+        function checkAttackHit(attackX) {
+            gameState.enemies.forEach((enemy, index) => {
+                const enemyX = parseInt(enemy.element.style.left);
+                const distance = Math.abs(attackX - enemyX);
+                
+                if (distance < 50) {
+                    // 命中敌人
+                    enemy.health -= 25;
+                    enemy.element.style.background = '#FF6B6B';
+                    
+                    setTimeout(() => {
+                        enemy.element.style.background = '#4ECDC4';
+                    }, 200);
+                    
+                    if (enemy.health <= 0) {
+                        // 敌人死亡
+                        enemy.element.remove();
+                        gameState.enemies.splice(index, 1);
+                        gameState.score += 10;
+                        updateUI();
+                        
+                        // 升级检查
+                        if (gameState.score >= gameState.level * 50) {
+                            gameState.level++;
+                            updateUI();
+                        }
+                    }
+                }
+            });
+        }
+
+        // 创建敌人
+        function createEnemy() {
+            const enemy = document.createElement('div');
+            enemy.className = 'enemy';
+            enemy.style.left = '800px';
+            
+            const enemyObj = {
+                element: enemy,
+                x: 800,
+                health: 50,
+                speed: 1 + gameState.level * 0.5
+            };
+            
+            gameState.enemies.push(enemyObj);
+            gameContainer.appendChild(enemy);
+        }
+
+        // 更新敌人
+        function updateEnemies() {
+            gameState.enemies.forEach((enemy, index) => {
+                enemy.x -= enemy.speed;
+                enemy.element.style.left = enemy.x + 'px';
+                
+                // 检查与玩家碰撞
+                const playerX = gameState.player.x;
+                const enemyX = enemy.x;
+                const distance = Math.abs(playerX - enemyX);
+                
+                if (distance < 40 && !gameState.player.isJumping) {
+                    // 玩家受伤
+                    gameState.health -= 10;
+                    updateUI();
+                    
+                    // 击退效果
+                    gameState.player.x += enemyX > playerX ? -20 : 20;
+                    player.style.left = gameState.player.x + 'px';
+                    
+                    if (gameState.health <= 0) {
+                        gameOver();
+                    }
+                }
+                
+                // 移除屏幕外的敌人
+                if (enemy.x < -50) {
+                    enemy.element.remove();
+                    gameState.enemies.splice(index, 1);
+                }
+            });
+        }
+
+        // 更新UI
+        function updateUI() {
+            document.getElementById('health').textContent = gameState.health;
+            document.getElementById('score').textContent = gameState.score;
+            document.getElementById('level').textContent = gameState.level;
+        }
+
+        // 游戏结束
+        function gameOver() {
+            gameState.isGameOver = true;
+            document.getElementById('finalScore').textContent = gameState.score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // 重新开始游戏
+        function restartGame() {
+            gameState = {
+                health: 100,
+                score: 0,
+                level: 1,
+                isGameOver: false,
+                player: {
+                    x: 100,
+                    y: 350,
+                    isJumping: false,
+                    isAttacking: false,
+                    facing: 'right'
+                },
+                enemies: [],
+                keys: {}
+            };
+            
+            // 清除所有敌人
+            document.querySelectorAll('.enemy').forEach(enemy => enemy.remove());
+            
+            // 重置玩家位置
+            player.style.left = '100px';
+            player.style.transform = 'scaleX(1)';
+            
+            // 隐藏游戏结束界面
+            document.getElementById('gameOver').style.display = 'none';
+            
+            updateUI();
+        }
+
+        // 游戏主循环
+        function gameLoop() {
+            if (!gameState.isGameOver) {
+                updatePlayer();
+                updateEnemies();
+                
+                // 随机生成敌人
+                if (Math.random() < 0.01 * gameState.level) {
+                    createEnemy();
+                }
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 启动游戏
+        updateUI();
+        gameLoop();
+    </script>
+</body>
+</html>
